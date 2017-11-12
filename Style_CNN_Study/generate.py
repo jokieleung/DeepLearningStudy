@@ -43,7 +43,7 @@ beta = 500
 # 加载VGG-19 MODEL及设定均值
 VGG_Model = 'MODEL/imagenet-vgg-verydeep-19.mat'
 MEAN_VALUES = np.array([123.68, 116.779, 103.939]).reshape((1, 1, 1, 3))
-# 设置需要用到的卷积层
+# 设置训练过程中需要用到的最深的隐藏卷积层是第几层
 CONTENT_LAYERS = [('conv4_2', 1.)]
 STYLE_LAYERS = [('conv1_1', 0.2), ('conv2_1', 0.2), ('conv3_1', 0.2), ('conv4_1', 0.2), ('conv5_1', 0.2)]
 
@@ -100,24 +100,67 @@ def get_weight_bias(vgg_layers, i):
 	return weights, bias
 	
 # 构建 VGG19 模型	
+# 还没理解VGG19模型的使用原理
+# 后期要理解 2017/11/13
 def build_vgg19(path):
-	
-	pass
+	net = {}
+	#加载VGG-19模型文件
+	vgg_rawnet = scipy.io.laodmat(path)
+	vgg_layers = vgg_rawnet['layers'][0]
+	# 整个VGG19模型的输入层
+	net['input'] = tf.Variable(np.zeros((1,IMAGE_HEIGHT,IMAGE_WIDTH,3)).astype('float32'))
+	net['conv1_1'] = build_net('conv', net['input'], get_weight_bias(vgg_layers, 0))
+	net['conv1_2'] = build_net('conv', net['conv1_1'], get_weight_bias(vgg_layers, 2))
+	net['pool1'] = build_net('pool', net['conv1_2'])
+	net['conv2_1'] = build_net('conv', net['pool1'], get_weight_bias(vgg_layers, 5))
+	net['conv2_2'] = build_net('conv', net['conv2_1'], get_weight_bias(vgg_layers, 7))
+	net['pool2'] = build_net('pool', net['conv2_2'])
+	net['conv3_1'] = build_net('conv', net['pool2'], get_weight_bias(vgg_layers, 10))
+	net['conv3_2'] = build_net('conv', net['conv3_1'], get_weight_bias(vgg_layers, 12))
+	net['conv3_3'] = build_net('conv', net['conv3_2'], get_weight_bias(vgg_layers, 14))
+	net['conv3_4'] = build_net('conv', net['conv3_3'], get_weight_bias(vgg_layers, 16))
+	net['pool3'] = build_net('pool', net['conv3_4'])
+	net['conv4_1'] = build_net('conv', net['pool3'], get_weight_bias(vgg_layers, 19))
+	net['conv4_2'] = build_net('conv', net['conv4_1'], get_weight_bias(vgg_layers, 21))
+	net['conv4_3'] = build_net('conv', net['conv4_2'], get_weight_bias(vgg_layers, 23))
+	net['conv4_4'] = build_net('conv', net['conv4_3'], get_weight_bias(vgg_layers, 25))
+	net['pool4'] = build_net('pool', net['conv4_4'])
+	net['conv5_1'] = build_net('conv', net['pool4'], get_weight_bias(vgg_layers, 28))
+	net['conv5_2'] = build_net('conv', net['conv5_1'], get_weight_bias(vgg_layers, 30))
+	net['conv5_3'] = build_net('conv', net['conv5_2'], get_weight_bias(vgg_layers, 32))
+	net['conv5_4'] = build_net('conv', net['conv5_3'], get_weight_bias(vgg_layers, 34))
+	net['pool5'] = build_net('pool', net['conv5_4'])
+	return net
 	
 # content内容的 单层神经网络的loss
+# 公式 算法还未能理解，后期要掌握 2017/11/13
+# p,x分别代表什么?
 def content_layer_loss(p,x):
 	
-	pass
+	M = p.shape[1] * p.shape[2]
+	N = p.shape[3]
+	loss = (1. / (2 * N * M)) * tf.reduce_sum(tf.pow((x - p), 2))
+	return loss
 	
 # 总的content_image的loss
 def content_loss_func(sess,net):
 	
-	pass
-	
+	layers = CONTENT_LAYERS
+	total_content_loss = 0.0
+	for layer_name, weight in layers:
+		p = sess.run(net[layer_name])
+		x = net[layer_name]
+		total_content_loss += content_layer_loss(p, x)*weight
 
+	total_content_loss /= float(len(layers))
+	return total_content_loss
+	
+# 格拉姆矩阵算法
 def gram_matrix(x,area,depth):
 	
-	pass
+	x1 = tf.reshape(x, (area, depth))
+	g = tf.matmul(tf.transpose(x1), x1)
+	return g
 	
 # style风格的 单层神经网络的loss	
 def style_layer_loss(a,x):
